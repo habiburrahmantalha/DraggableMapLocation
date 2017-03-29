@@ -3,13 +3,13 @@ package com.rrmsense.draggablemaplocation;
 import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
-import android.location.Address;
-import android.location.Geocoder;
 import android.os.Build;
 import android.os.Bundle;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
+import android.widget.Button;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.google.android.gms.maps.CameraUpdate;
 import com.google.android.gms.maps.CameraUpdateFactory;
@@ -21,18 +21,23 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 
-import java.io.IOException;
-import java.util.List;
-import java.util.Locale;
+import butterknife.BindView;
+import butterknife.ButterKnife;
+import butterknife.OnClick;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements DrawRoute.onDrawRoute {
 
     MapView mapView;
     GoogleMap googleMap;
     double longitude;
     double latitude;
     Marker marker;
+
+    @BindView(R.id.button)
+    Button button;
+    @BindView(R.id.locationGPS)
     TextView locationGPS;
+    @BindView(R.id.locationAddress)
     TextView locationAddress;
     private TrackGPS gps;
 
@@ -40,12 +45,12 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        ButterKnife.bind(this);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP)
             getPermissions();
 
-        locationGPS = (TextView) findViewById(R.id.locationGPS);
-        locationAddress = (TextView) findViewById(R.id.locationAddress);
+
         mapView = (MapView) findViewById(R.id.mapView);
         mapView.onCreate(savedInstanceState);
 
@@ -63,54 +68,30 @@ public class MainActivity extends AppCompatActivity {
                 googleMap.setOnMarkerClickListener(new GoogleMap.OnMarkerClickListener() {
                     @Override
                     public boolean onMarkerClick(Marker marker) {
-
                         marker.showInfoWindow();
                         return true;
                     }
                 });
+
                 googleMap.setOnCameraMoveListener(new GoogleMap.OnCameraMoveListener() {
                     @Override
                     public void onCameraMove() {
-
                         LatLng latLng = googleMap.getCameraPosition().target;
                         marker.setPosition(latLng);
-
-
-                        locationGPS.setText(latLng.toString());
-
                     }
                 });
-                googleMap.setOnCameraMoveCanceledListener(new GoogleMap.OnCameraMoveCanceledListener() {
+
+                googleMap.setOnCameraIdleListener(new GoogleMap.OnCameraIdleListener() {
                     @Override
-                    public void onCameraMoveCanceled() {
+                    public void onCameraIdle() {
+                        LatLng latLng = googleMap.getCameraPosition().target;
+
+                        latitude = latLng.latitude;
+                        longitude = latLng.longitude;
 
 
                     }
                 });
-
-               googleMap.setOnCameraIdleListener(new GoogleMap.OnCameraIdleListener() {
-                   @Override
-                   public void onCameraIdle() {
-                       LatLng latLng = googleMap.getCameraPosition().target;
-                       Geocoder geocoder = new Geocoder(getApplicationContext(), Locale.getDefault());
-
-                       List<Address> addresses = null;
-                       try {
-                           addresses = geocoder.getFromLocation(latLng.latitude, latLng.longitude, 1);
-                       } catch (IOException e) {
-                           e.printStackTrace();
-                       }
-                       if(addresses.size()==0)
-                           return;
-                       String city = addresses.get(0).getLocality();
-                       String addressLine = addresses.get(0).getAddressLine(0);
-                       String country = addresses.get(0).getCountryName();
-
-
-                       locationAddress.setText(addressLine + " " + city + " " + country);
-
-                   }
-               });
                 mapView.onResume();
                 updateLocation();
 
@@ -141,17 +122,15 @@ public class MainActivity extends AppCompatActivity {
             marker = googleMap.addMarker(new MarkerOptions()
                     .position(latLng)
                     .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE))
-
             );
 
         } else {
             gps.showSettingsAlert();
         }
-
     }
 
     public static boolean hasPermissions(Context context, String... permissions) {
-        if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && context != null && permissions != null) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && context != null && permissions != null) {
             for (String permission : permissions) {
                 if (ActivityCompat.checkSelfPermission(context, permission) != PackageManager.PERMISSION_GRANTED) {
                     return false;
@@ -159,5 +138,51 @@ public class MainActivity extends AppCompatActivity {
             }
         }
         return true;
+    }
+
+    @Override
+    public void afterDraw(String result) {
+        Toast.makeText(this, "Route", Toast.LENGTH_SHORT).show();
+
+    }
+
+    @OnClick(R.id.button)
+    public void onClick() {
+        String key = "AIzaSyAKHdw1ZwNzaZejEhi-8sWLczAscCY1oAI";//"AIzaSyCXu4kn4jzdLVp54AhkHNOrBMAyq4q4bXI";
+        DrawRoute.getInstance(MainActivity.this, MainActivity.this).setFromLatLong(gps.getLatitude(),gps.getLongitude())
+                .setToLatLong(latitude,longitude).setGmapAndKey(key, googleMap).run();
+
+
+
+       /* String url = "https://maps.googleapis.com/maps/api/directions/json?origin=" + gps.getLatitude() + "," + gps.getLongitude() + "&destination=" +
+                latitude + "," + longitude + "&sensor=false&mode=driving&alternatives=true&key=" + key;
+        RequestParams params = new RequestParams();
+        //params.put("key", key);
+        AsyncHttpClient client = new AsyncHttpClient();
+        client.post(url, params, new TextHttpResponseHandler() {
+                    @Override
+                    public void onSuccess(int statusCode, Header[] headers, String res) {
+                        locationAddress.setText(res);
+                        AsyncHttpClient client = new AsyncHttpClient();
+                        RequestParams params = new RequestParams();
+                        params.put("json", res);
+                        client.post("http://www.rrmelectronics.com/appserver/direction.php", params, new TextHttpResponseHandler() {
+                                    @Override
+                                    public void onSuccess(int statusCode, Header[] headers, String res) {
+
+                                    }
+
+                                    @Override
+                                    public void onFailure(int statusCode, Header[] headers, String res, Throwable t) {
+                                    }
+                                }
+                        );
+                    }
+
+                    @Override
+                    public void onFailure(int statusCode, Header[] headers, String res, Throwable t) {
+                    }
+                }
+        );*/
     }
 }
